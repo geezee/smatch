@@ -19,6 +19,9 @@ macro_rules! vec_map { ($var:ident in $lst:expr => $f:expr) => {{
   result
 }};}
 
+macro_rules! err  { ($($args:expr),*) => { Err(SmatchError(format!($($args),*))) };}
+macro_rules! err2 { ($($args:expr),*) => {     SmatchError(format!($($args),*))  };}
+
 
 
 enum Either<S,T> {
@@ -93,7 +96,7 @@ enum SExprParser {} impl SExprParser {
     // skip whitespace
     while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
 
-    if !inbounds!() { return Err(SmatchError("End-of-input".to_string())) }
+    if !inbounds!() { return err!("End-of-input") }
 
     let token_start = *cursor;
 
@@ -115,12 +118,12 @@ enum SExprParser {} impl SExprParser {
         })
       },
       '"' => loop {
-        if !inbounds!() { break Err(SmatchError(format!("{}: Non-terminated string", *cursor-1))) }
+        if !inbounds!() { break err!("{}: Non-terminated string", *cursor-1) }
         if current!() == '"' && peek!() != Some('"') { consume!(); break Ok(Str(token_start+1, *cursor-1)) }
         consume!();
       },
       '|' => loop {
-        if !inbounds!() { break Err(SmatchError(format!("{}: Non-terminated quoted symbol", *cursor-1))) }
+        if !inbounds!() { break err!("{}: Non-terminated quoted symbol", *cursor-1) }
         if current!() == '\\' { break Err(SmatchError(format!("{cursor}: \\ not allowed in quoted symbols"))) }
         if current!() == '|' { consume!(); break Ok(Symbol(token_start+1, *cursor-1)) }
         consume!();
@@ -129,7 +132,7 @@ enum SExprParser {} impl SExprParser {
         if !inbounds!() || !valid_id_char(current!()) { break Ok(Symbol(token_start, *cursor)) }
         consume!();
       }
-      c => Err(SmatchError(format!("{}: Illegal character {c}", *cursor-1)))
+      c => err!("{}: Illegal character {c}", *cursor-1)
     };
 
     while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
@@ -144,11 +147,11 @@ enum SExprParser {} impl SExprParser {
     fn aux<'a>(contents: &'a str, cursor: &mut usize) -> Result<SExpr<'a>, SmatchError> {
       let token = SExprParser::next_token(contents, cursor)?;
       match token {
-        CloseParen(_) => Err(SmatchError(format!("{cursor}: Too many closing parentheses"))),
+        CloseParen(_) => err!("{cursor}: Too many closing parentheses"),
         Numeral(start, end) => Ok(Atom(Literal::Numeral(
-          contents[start..end].parse().map_err(|_| SmatchError(format!("{cursor}: Could not parse number")))?))),
+          contents[start..end].parse().map_err(|_| err2!("{cursor}: Could not parse number"))?))),
         Decimal(start, end) => Ok(Atom(Literal::Decimal(
-          contents[start..end].parse().map_err(|_| SmatchError(format!("{cursor}: Could not parse number")))?))),
+          contents[start..end].parse().map_err(|_| err2!("{cursor}: Could not parse number"))?))),
         Str(start, end) => Ok(Atom(Literal::Str(&contents[start..end]))),
         Symbol(start, end) => Ok(Atom(Literal::Symbol(&contents[start..end]))),
         OpenParen(_) => {
@@ -226,10 +229,10 @@ enum SExprParser {} impl SExprParser {
       }
       i += 1;
     }
+
     if start < i {
       println!("{preamble}{}", String::from_utf8(bytes[start..i].to_vec()).unwrap());
     }
-
   }}}
 }
 
@@ -269,27 +272,23 @@ impl Multiplicity {
     match sexpr {
       List(lst) => match &lst[..] {
         [Atom(Symbol("@*")), pattern] => Ok((ZeroOrMore, Pattern::from(pattern)?)),
-        [Atom(Symbol("@*")), ..] => Err(SmatchError(format!("Wrong arguments to @*"))),
         [Atom(Symbol("@+")), pattern] => Ok((OneOrMore, Pattern::from(pattern)?)),
-        [Atom(Symbol("@+")), ..] => Err(SmatchError(format!("Wrong arguments to @+"))),
         [Atom(Symbol("@?")), pattern] => Ok((ZeroOrOne, Pattern::from(pattern)?)),
-        [Atom(Symbol("@?")), ..] => Err(SmatchError(format!("Wrong arguments to @?"))),
         [Atom(Symbol("@less")), Atom(Numeral(n)), pattern] => {
-          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @less")))?;
+          let n = (*n).try_into().map_err(|_| err2!("{n} is too large for @less"))?;
           Ok((LessThan(n), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@less")), ..] => Err(SmatchError(format!("Wrong arguments to @less"))),
         [Atom(Symbol("@more")), Atom(Numeral(n)), pattern] => {
-          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @more")))?;
+          let n = (*n).try_into().map_err(|_| err2!("{n} is too large for @more"))?;
           Ok((MoreThan(n), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@more")), ..] => Err(SmatchError(format!("Wrong arguments to @more"))),
         [Atom(Symbol("@between")), Atom(Numeral(n)), Atom(Numeral(m)), pattern] if *n < *m => {
-          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @between")))?;
-          let m = (*m).try_into().map_err(|_| SmatchError(format!("{m} is too large for @between")))?;
+          let n = (*n).try_into().map_err(|_| err2!("{n} is too large for @between"))?;
+          let m = (*m).try_into().map_err(|_| err2!("{m} is too large for @between"))?;
           Ok((Between(n, m), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@between")), ..] => Err(SmatchError(format!("Wrong arguments to @between"))),
+        [Atom(Symbol(cmd @ ("@*" | "@+" | "@?" | "@less" | "@more" | "@between"))), ..]
+          => err!("Wrong arguments to {cmd}"),
         _ => Ok((Once, Pattern::from(sexpr)?)),
       }
       Atom(_) => Ok((Once, Pattern::from(sexpr)?)),
@@ -361,7 +360,6 @@ impl<'a> Pattern<'a> {
     Atom(lit) => Ok(Pattern::Literal(lit)),
     List(lst) => match &lst[..] {
       [Atom(Symbol("@re")), Atom(Str(re))] => Ok(Pattern::Re(Regex::new(re).unwrap())),
-      [Atom(Symbol("@re")), ..] => Err(SmatchError(format!("Wrong arguments to @re"))),
       [Atom(Symbol("@*"|"@+"|"@?"|"@less"|"@more"|"@between")), ..] => {
         let (repeat, pattern) = Multiplicity::from(sexpr)?;
         Ok(Pattern::Repeat(repeat, Rc::new(pattern)))
@@ -370,13 +368,12 @@ impl<'a> Pattern<'a> {
         let (repeat, pattern) = Multiplicity::from(repeat)?;
         Ok(Pattern::Depth(repeat, Rc::new(pattern)))
       },
-      [Atom(Symbol("@depth")), ..] => Err(SmatchError(format!("Wrong arguments to @depth"))),
       [Atom(Symbol("@or")), patterns @ ..] if patterns.len() > 0 =>
         Ok(Pattern::Choice(vec_map!(p in patterns => Pattern::from(p)?))),
-      [Atom(Symbol("@or")), ..] => Err(SmatchError(format!("Wrong arguments to @or"))),
       [Atom(Symbol("@and")), patterns @ ..] if patterns.len() > 0 =>
         Ok(Pattern::And(vec_map!(p in patterns => Pattern::from(p)?))),
-      [Atom(Symbol("@and")), ..] => Err(SmatchError(format!("Wrong arguments to @and"))),
+      [Atom(Symbol(cmd @ ("@re" | "@depth" | "@or" | "@and"))), ..]
+        => err!("Wrong arguments to {cmd}"),
       [patterns @ ..] => Ok(Pattern::List(vec_map!(x in patterns => Pattern::from(x)?))),
     }}
   }}}
@@ -403,6 +400,7 @@ impl<'a> Pattern<'a> {
     }
   }}}
 }
+
 
 impl<'a> Pattern<'a> {
   fn check<'b>(&self, sexpr: &'b SExpr<'a>) -> bool {{{
@@ -598,16 +596,16 @@ fn main() -> Result<(), SmatchError> {
 
   let num_matches = match cli.clone() {
     Cli { pattern: None, pattern_file: None, .. }
-      => Err(SmatchError(format!("Missing pattern argument or pattern file"))),
+      => err!("Missing pattern argument or pattern file"),
     Cli { pattern: Some(_), pattern_file: Some(_), .. }
-      => Err(SmatchError(format!("Expecting either a pattern or a pattern file, not both"))),
+      => err!("Expecting either a pattern or a pattern file, not both"),
     Cli { pattern: Some(pattern), files, .. } =>
       handle_args(pattern, &files, &cli),
     Cli { pattern_file: Some(pattern_file), files, .. } => {
       let pattern = read_to_string(&pattern_file);
       match pattern {
         Ok(pattern) => handle_args(pattern, &files, &cli),
-        Err(e) => Err(SmatchError(format!("pattern file: {e}"))),
+        Err(e) => err!("pattern file: {e}"),
       }
     }
   }?;

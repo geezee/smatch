@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Formatter};
 use std::rc::{Rc};
 use std::fs::{read_to_string, metadata, read_dir};
 
@@ -38,12 +38,6 @@ impl<S,T> Either<S,T> {
 
 
 struct SmatchError(String);
-
-impl Display for SmatchError {
-  fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-    write!(fmt, "{}", self.0)
-  }
-}
 
 impl Debug for SmatchError {
   fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -508,6 +502,14 @@ struct Cli {
   /// verbose printing of the parsing and searching stages
   #[arg(long, default_value_t=false)]
   debug: bool,
+
+  /// Invert the sense of matching, to select non-matching s-expr.
+  #[arg(short='v', long, default_value_t=false)]
+  invert_match: bool,
+
+  /// Only print the number of matches
+  #[arg(short, long, default_value_t=false)]
+  count: bool,
 }
 
 
@@ -522,7 +524,7 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
     match parse_result {
       Left((p, _, _)) => { pattern_sexpr = Some(p); }
       Right(error) => {
-        return Err(SmatchError(format!("while parsing pattern: {error}")));
+        return Err(SmatchError(format!("while parsing pattern: {error:?}")));
       }
     }
   }
@@ -535,7 +537,7 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
   let pattern = match Pattern::from(&pattern_sexpr) {
     Ok(pattern) => pattern,
     Err(error) => {
-      return Err(SmatchError(format!("while parsing pattern: {error}")));
+      return Err(SmatchError(format!("while parsing pattern: {error:?}")));
     }
   };
 
@@ -569,22 +571,30 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
       }
     };
 
+    let mut num_matches_file = 0;
     for parse_result in SExprParser::parse(&contents) { match parse_result {
       Right(error) => {
         if opts.ignore_syntax_errors {
           break;
         } else {
-          return Err(SmatchError(format!("{file}: {error}")));
+          return Err(SmatchError(format!("{file}: {error:?}")));
         }
       }
       Left((sexpr, start, end)) => {
         if opts.debug { println!("[debug] term = {sexpr:?}"); }
-        if pattern.check(&sexpr) {
-          SExprParser::print_sexpr(&file, &contents, start, end, &opts);
+        if pattern.check(&sexpr) == !opts.invert_match {
+          if !opts.count {
+            SExprParser::print_sexpr(&file, &contents, start, end, &opts);
+          }
           num_matches += 1;
+          num_matches_file += 1;
         }
       }
     }}
+
+    if opts.count {
+      println!("{file}:{num_matches_file}");
+    }
   }
 
   Ok(num_matches)

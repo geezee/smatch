@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::rc::{Rc};
 use std::fs::{read_to_string, metadata, read_dir};
 

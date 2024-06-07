@@ -1,0 +1,12 @@
+[package]
+name = "smatch"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.4", default_features = false, features = ["std", "help", "error-context", "usage", "suggestions", "derive"] }
+regex = "1.10.4"
+
+[[bin]]
+name = "smatch"
+path = "smatch.rs"

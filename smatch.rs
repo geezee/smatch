@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Display, Formatter};
 use std::rc::{Rc};
 use std::fs::{read_to_string, metadata, read_dir};
 
@@ -20,7 +21,6 @@ macro_rules! vec_map { ($var:ident in $lst:expr => $f:expr) => {{
 
 
 
-#[derive(Debug)]
 enum Either<S,T> {
   Left(S),
   Right(T),
@@ -34,9 +34,23 @@ impl<S,T> Either<S,T> {
 }
 
 
+struct SmatchError(String);
+
+impl Display for SmatchError {
+  fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+    write!(fmt, "{}", self.0)
+  }
+}
+
+impl Debug for SmatchError {
+  fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+    write!(fmt, "{}", self.0)
+  }
+}
 
 
-#[derive(Debug, PartialEq)]
+
+#[derive(PartialEq)]
 enum Token {
   OpenParen(usize),
   CloseParen(usize),
@@ -60,122 +74,167 @@ enum SExpr<'a> {
   List(Vec<SExpr<'a>>),
 }
 
-fn next_token (contents: &str, cursor: &mut usize) -> Result<Token, String> {{{
-  use Token::*;
-  let bytes = contents.as_bytes();
 
-  macro_rules! inbounds { () => {*cursor < bytes.len()};}
-  macro_rules! current { () => {bytes[*cursor] as char};}
-  macro_rules! consume { () => {{let c = current!(); *cursor += 1; c }}; }
-  macro_rules! peek { () => {if *cursor+1 >= bytes.len() { None } else { Some(bytes[*cursor+1] as char) }}; }
+enum SExprParser {} impl SExprParser {
+  fn next_token (contents: &str, cursor: &mut usize) -> Result<Token, SmatchError> {{{
+    use Token::*;
+    let bytes = contents.as_bytes();
 
-  fn valid_id_char(c: char) -> bool {
-    ('a'<=c && c<='z') || ('A'<=c && c<='Z') || ('0'<=c && c<='9') ||
-    one_of!(c, '~', '!', '@', '$', '%', '^', '&', '*', '_', '-', '+', '=', '<', '>', '.' , '?', '/', ':')
-  }
+    macro_rules! inbounds { () => {*cursor < bytes.len()};}
+    macro_rules! current { () => {bytes[*cursor] as char};}
+    macro_rules! consume { () => {{let c = current!(); *cursor += 1; c }}; }
+    macro_rules! peek { () => {if *cursor+1 >= bytes.len() { None } else { Some(bytes[*cursor+1] as char) }}; }
 
-  // skip whitespace
-  while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
+    fn valid_id_char(c: char) -> bool {
+      ('a'<=c && c<='z') || ('A'<=c && c<='Z') || ('0'<=c && c<='9') ||
+      one_of!(c, '~', '!', '@', '$', '%', '^', '&', '*', '_', '-', '+', '=', '<', '>', '.' , '?', '/', ':')
+    }
 
-  if !inbounds!() { return Err("End-of-input".to_string()) }
+    // skip whitespace
+    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
 
-  let token_start = *cursor;
+    if !inbounds!() { return Err(SmatchError("End-of-input".to_string())) }
 
-  let result = match consume!() {
-    ';' => {
-      while inbounds!() && !one_of!(current!(), '\n', '\r') { consume!(); }
-      next_token(contents, cursor)
-    },
-    '(' => Ok(OpenParen(*cursor-1)),
-    ')' => Ok(CloseParen(*cursor-1)),
-    '0'..='9' => {
-      while inbounds!() && '0' <= current!() && current!() <= '9' { consume!(); }
-      Ok(if inbounds!() && current!() == '.' {
-        consume!();
+    let token_start = *cursor;
+
+    let result = match consume!() {
+      ';' => {
+        while inbounds!() && !one_of!(current!(), '\n', '\r') { consume!(); }
+        Self::next_token(contents, cursor)
+      },
+      '(' => Ok(OpenParen(*cursor-1)),
+      ')' => Ok(CloseParen(*cursor-1)),
+      '0'..='9' => {
         while inbounds!() && '0' <= current!() && current!() <= '9' { consume!(); }
-        Decimal(token_start, *cursor)
-      } else {
-        Numeral(token_start, *cursor)
-      })
-    },
-    '"' => loop {
-      if !inbounds!() { break Err(format!("{}: Non-terminated string", *cursor-1)) }
-      if current!() == '"' && peek!() != Some('"') { consume!(); break Ok(Str(token_start+1, *cursor-1)) }
-      consume!();
-    },
-    '|' => loop {
-      if !inbounds!() { break Err(format!("{}: Non-terminated quoted symbol", *cursor-1)) }
-      if current!() == '\\' { break Err(format!("{cursor}: \\ not allowed in quoted symbols")) }
-      if current!() == '|' { consume!(); break Ok(Symbol(token_start+1, *cursor-1)) }
-      consume!();
-    }
-    c if valid_id_char(c) => loop {
-      if !inbounds!() || !valid_id_char(current!()) { break Ok(Symbol(token_start, *cursor)) }
-      consume!();
-    }
-    c => Err(format!("{}: Illegal character {c}", *cursor-1))
-  };
+        Ok(if inbounds!() && current!() == '.' {
+          consume!();
+          while inbounds!() && '0' <= current!() && current!() <= '9' { consume!(); }
+          Decimal(token_start, *cursor)
+        } else {
+          Numeral(token_start, *cursor)
+        })
+      },
+      '"' => loop {
+        if !inbounds!() { break Err(SmatchError(format!("{}: Non-terminated string", *cursor-1))) }
+        if current!() == '"' && peek!() != Some('"') { consume!(); break Ok(Str(token_start+1, *cursor-1)) }
+        consume!();
+      },
+      '|' => loop {
+        if !inbounds!() { break Err(SmatchError(format!("{}: Non-terminated quoted symbol", *cursor-1))) }
+        if current!() == '\\' { break Err(SmatchError(format!("{cursor}: \\ not allowed in quoted symbols"))) }
+        if current!() == '|' { consume!(); break Ok(Symbol(token_start+1, *cursor-1)) }
+        consume!();
+      }
+      c if valid_id_char(c) => loop {
+        if !inbounds!() || !valid_id_char(current!()) { break Ok(Symbol(token_start, *cursor)) }
+        consume!();
+      }
+      c => Err(SmatchError(format!("{}: Illegal character {c}", *cursor-1)))
+    };
 
-  while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
+    while inbounds!() && one_of!(bytes[*cursor] as char, ' ', '\n', '\r', '\t') { *cursor += 1; }
 
-  result
-}}}
+    result
+  }}}
 
-fn parse<'a>(contents: &'a str) -> impl Iterator<Item=Either<(SExpr<'a>, usize, usize), String>> {{{
-  use Token::*;
-  use SExpr::*;
+  fn parse<'a>(contents: &'a str) -> impl Iterator<Item=Either<(SExpr<'a>, usize, usize), SmatchError>> {{{
+    use Token::*;
+    use SExpr::*;
 
-  fn aux<'a>(contents: &'a str, cursor: &mut usize) -> Result<SExpr<'a>, String> {
-    let token = next_token(contents, cursor)?;
-    match token {
-      CloseParen(_) => Err(format!("{cursor}: Too many closing parentheses")),
-      Numeral(start, end) => Ok(Atom(Literal::Numeral(
-        contents[start..end].parse().map_err(|_| format!("{cursor}: Could not parse number"))?))),
-      Decimal(start, end) => Ok(Atom(Literal::Decimal(
-        contents[start..end].parse().map_err(|_| format!("{cursor}: Could not parse number"))?))),
-      Str(start, end) => Ok(Atom(Literal::Str(&contents[start..end]))),
-      Symbol(start, end) => Ok(Atom(Literal::Symbol(&contents[start..end]))),
-      OpenParen(_) => {
-        let mut vec = vec![];
-        loop {
-          let old_cursor = *cursor;
-          let token = next_token(contents, cursor)?;
-          if let CloseParen(_) = token {
-            break;
-          } else {
-            *cursor = old_cursor;
-            vec.push(aux(contents, cursor)?);
-          }
-        };
-        Ok(List(vec))
+    fn aux<'a>(contents: &'a str, cursor: &mut usize) -> Result<SExpr<'a>, SmatchError> {
+      let token = SExprParser::next_token(contents, cursor)?;
+      match token {
+        CloseParen(_) => Err(SmatchError(format!("{cursor}: Too many closing parentheses"))),
+        Numeral(start, end) => Ok(Atom(Literal::Numeral(
+          contents[start..end].parse().map_err(|_| SmatchError(format!("{cursor}: Could not parse number")))?))),
+        Decimal(start, end) => Ok(Atom(Literal::Decimal(
+          contents[start..end].parse().map_err(|_| SmatchError(format!("{cursor}: Could not parse number")))?))),
+        Str(start, end) => Ok(Atom(Literal::Str(&contents[start..end]))),
+        Symbol(start, end) => Ok(Atom(Literal::Symbol(&contents[start..end]))),
+        OpenParen(_) => {
+          let mut vec = vec![];
+          loop {
+            let old_cursor = *cursor;
+            let token = SExprParser::next_token(contents, cursor)?;
+            if let CloseParen(_) = token {
+              break;
+            } else {
+              *cursor = old_cursor;
+              vec.push(aux(contents, cursor)?);
+            }
+          };
+          Ok(List(vec))
+        }
       }
     }
-  }
 
-  struct ParseIterator<'a> {
-    contents: &'a str,
-    cursor: usize
-  }
+    struct ParseIterator<'a> {
+      contents: &'a str,
+      cursor: usize
+    }
 
-  impl<'a> Iterator for ParseIterator<'a> {
-    type Item=Either<(SExpr<'a>, usize, usize), String>;
+    impl<'a> Iterator for ParseIterator<'a> {
+      type Item=Either<(SExpr<'a>, usize, usize), SmatchError>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-      let start = self.cursor;
-      if self.cursor >= self.contents.len() { None }
-      else {
-        let result = aux(self.contents, &mut self.cursor);
-        let result_with_pos = result.map(|r| (r, start, self.cursor));
-        Some(Either::from_result(result_with_pos))
+      fn next(&mut self) -> Option<Self::Item> {
+        let start = self.cursor;
+        if self.cursor >= self.contents.len() { None }
+        else {
+          let result = aux(self.contents, &mut self.cursor);
+          let result_with_pos = result.map(|r| (r, start, self.cursor));
+          Some(Either::from_result(result_with_pos))
+        }
       }
     }
-  }
 
-  ParseIterator { contents, cursor: 0 }
-}}}
+    ParseIterator { contents, cursor: 0 }
+  }}}
+
+  fn print_sexpr<'a>(filename: &'a str, content: &'a str, start: usize, end: usize, opts: &Cli) {{{
+    let bytes = content.as_bytes();
+
+    let mut start = start;
+    let mut in_comment = false;
+    loop {
+      if start >= bytes.len() { return }
+      let b = bytes[start];
+      if in_comment && b == b'\n' { in_comment = false; }
+      if !in_comment && b == b';' { in_comment = true; }
+      if !in_comment && !one_of!(b, b' ', b'\n', b'\r', b'\t') { break }
+      start += 1;
+    }
+
+    let mut line = 1;
+    let mut preamble = if opts.line_number {
+      for i in 0..start {
+        if bytes[i] == b'\n' {
+          line += 1;
+        }
+      }
+      format!("{filename}:{line}:")
+    } else { String::new() };
+
+    let mut i = start;
+    while i < end {
+      if bytes[i] == b'\n' {
+        println!("{preamble}{}", String::from_utf8(bytes[start..i].to_vec()).unwrap());
+        start = i+1;
+        if opts.line_number {
+          line += 1;
+          preamble = std::iter::repeat(' ').take(preamble.len()).collect();
+        }
+      }
+      i += 1;
+    }
+    if start < i {
+      println!("{preamble}{}", String::from_utf8(bytes[start..i].to_vec()).unwrap());
+    }
+
+  }}}
+}
 
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Debug, Clone)]
 enum Multiplicity {
   Zero,
   Once,
@@ -187,7 +246,7 @@ enum Multiplicity {
   Between(u16, u16),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum Pattern<'a> {
   Wildcard,
   Atom,
@@ -202,7 +261,7 @@ enum Pattern<'a> {
 
 
 impl Multiplicity {
-  fn from<'a>(sexpr: &'a SExpr<'a>) -> Result<(Multiplicity, Pattern<'a>), String> {{{
+  fn from<'a>(sexpr: &'a SExpr<'a>) -> Result<(Multiplicity, Pattern<'a>), SmatchError> {{{
     use SExpr::*;
     use Multiplicity::*;
     use Literal::*;
@@ -210,27 +269,27 @@ impl Multiplicity {
     match sexpr {
       List(lst) => match &lst[..] {
         [Atom(Symbol("@*")), pattern] => Ok((ZeroOrMore, Pattern::from(pattern)?)),
-        [Atom(Symbol("@*")), ..] => Err(format!("Wrong arguments to @*")),
+        [Atom(Symbol("@*")), ..] => Err(SmatchError(format!("Wrong arguments to @*"))),
         [Atom(Symbol("@+")), pattern] => Ok((OneOrMore, Pattern::from(pattern)?)),
-        [Atom(Symbol("@+")), ..] => Err(format!("Wrong arguments to @+")),
+        [Atom(Symbol("@+")), ..] => Err(SmatchError(format!("Wrong arguments to @+"))),
         [Atom(Symbol("@?")), pattern] => Ok((ZeroOrOne, Pattern::from(pattern)?)),
-        [Atom(Symbol("@?")), ..] => Err(format!("Wrong arguments to @?")),
+        [Atom(Symbol("@?")), ..] => Err(SmatchError(format!("Wrong arguments to @?"))),
         [Atom(Symbol("@less")), Atom(Numeral(n)), pattern] => {
-          let n = (*n).try_into().map_err(|_| format!("{n} is too large for @less"))?;
+          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @less")))?;
           Ok((LessThan(n), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@less")), ..] => Err(format!("Wrong arguments to @less")),
+        [Atom(Symbol("@less")), ..] => Err(SmatchError(format!("Wrong arguments to @less"))),
         [Atom(Symbol("@more")), Atom(Numeral(n)), pattern] => {
-          let n = (*n).try_into().map_err(|_| format!("{n} is too large for @more"))?;
+          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @more")))?;
           Ok((MoreThan(n), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@more")), ..] => Err(format!("Wrong arguments to @more")),
+        [Atom(Symbol("@more")), ..] => Err(SmatchError(format!("Wrong arguments to @more"))),
         [Atom(Symbol("@between")), Atom(Numeral(n)), Atom(Numeral(m)), pattern] if *n < *m => {
-          let n = (*n).try_into().map_err(|_| format!("{n} is too large for @between"))?;
-          let m = (*m).try_into().map_err(|_| format!("{m} is too large for @between"))?;
+          let n = (*n).try_into().map_err(|_| SmatchError(format!("{n} is too large for @between")))?;
+          let m = (*m).try_into().map_err(|_| SmatchError(format!("{m} is too large for @between")))?;
           Ok((Between(n, m), Pattern::from(pattern)?))
         },
-        [Atom(Symbol("@between")), ..] => Err(format!("Wrong arguments to @between")),
+        [Atom(Symbol("@between")), ..] => Err(SmatchError(format!("Wrong arguments to @between"))),
         _ => Ok((Once, Pattern::from(sexpr)?)),
       }
       Atom(_) => Ok((Once, Pattern::from(sexpr)?)),
@@ -293,7 +352,7 @@ impl Multiplicity {
 
 
 impl<'a> Pattern<'a> {
-  fn from(sexpr: &'a SExpr<'a>) -> Result<Pattern<'a>, String> {{{
+  fn from(sexpr: &'a SExpr<'a>) -> Result<Pattern<'a>, SmatchError> {{{
     use SExpr::*;
     use Literal::*;
     match sexpr {
@@ -302,7 +361,7 @@ impl<'a> Pattern<'a> {
     Atom(lit) => Ok(Pattern::Literal(lit)),
     List(lst) => match &lst[..] {
       [Atom(Symbol("@re")), Atom(Str(re))] => Ok(Pattern::Re(Regex::new(re).unwrap())),
-      [Atom(Symbol("@re")), ..] => Err(format!("Wrong arguments to @re")),
+      [Atom(Symbol("@re")), ..] => Err(SmatchError(format!("Wrong arguments to @re"))),
       [Atom(Symbol("@*"|"@+"|"@?"|"@less"|"@more"|"@between")), ..] => {
         let (repeat, pattern) = Multiplicity::from(sexpr)?;
         Ok(Pattern::Repeat(repeat, Rc::new(pattern)))
@@ -311,13 +370,13 @@ impl<'a> Pattern<'a> {
         let (repeat, pattern) = Multiplicity::from(repeat)?;
         Ok(Pattern::Depth(repeat, Rc::new(pattern)))
       },
-      [Atom(Symbol("@depth")), ..] => Err(format!("Wrong arguments to @depth")),
+      [Atom(Symbol("@depth")), ..] => Err(SmatchError(format!("Wrong arguments to @depth"))),
       [Atom(Symbol("@or")), patterns @ ..] if patterns.len() > 0 =>
         Ok(Pattern::Choice(vec_map!(p in patterns => Pattern::from(p)?))),
-      [Atom(Symbol("@or")), ..] => Err(format!("Wrong arguments to @or")),
+      [Atom(Symbol("@or")), ..] => Err(SmatchError(format!("Wrong arguments to @or"))),
       [Atom(Symbol("@and")), patterns @ ..] if patterns.len() > 0 =>
         Ok(Pattern::And(vec_map!(p in patterns => Pattern::from(p)?))),
-      [Atom(Symbol("@and")), ..] => Err(format!("Wrong arguments to @and")),
+      [Atom(Symbol("@and")), ..] => Err(SmatchError(format!("Wrong arguments to @and"))),
       [patterns @ ..] => Ok(Pattern::List(vec_map!(x in patterns => Pattern::from(x)?))),
     }}
   }}}
@@ -410,12 +469,12 @@ impl<'a> Pattern<'a> {
              terms.iter().any(|t| p.check(t))
            }),
 
-      // illecal cases:
+      // illegal cases:
       (Atom, SExpr::List(_)) |
       (Literal(_), SExpr::List(_)) |
       (List(_), SExpr::Atom(_)) |
       (Re(_), _)
-      => false,
+        => false,
     }
   }}}
 }
@@ -423,7 +482,7 @@ impl<'a> Pattern<'a> {
 
 
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(about)]
 struct Cli {
   /// The pattern to search for
@@ -453,81 +512,32 @@ struct Cli {
   debug: bool,
 }
 
-struct Opts {
-  ignore_syntax_errors: bool,
-  line_number: bool,
-  debug: bool,
-  recursive: bool,
-}
 
-
-fn print_sexpr<'a>(filename: &'a str, content: &'a str, start: usize, end: usize, opts: &Opts) {{{
-  let bytes = content.as_bytes();
-
-  let mut start = start;
-  let mut in_comment = false;
-  loop {
-    if start >= bytes.len() { return }
-    let b = bytes[start];
-    if in_comment && b == b'\n' { in_comment = false; }
-    if !in_comment && b == b';' { in_comment = true; }
-    if !in_comment && !one_of!(b, b' ', b'\n', b'\r', b'\t') { break }
-    start += 1;
-  }
-
-  let mut line = 1;
-  let mut preamble = if opts.line_number {
-    for i in 0..start {
-      if bytes[i] == b'\n' {
-        line += 1;
-      }
-    }
-    format!("{filename}:{line}:")
-  } else { String::new() };
-
-  let mut i = start;
-  while i < end {
-    if bytes[i] == b'\n' {
-      println!("{preamble}{}", String::from_utf8(bytes[start..i].to_vec()).unwrap());
-      start = i+1;
-      if opts.line_number {
-        line += 1;
-        preamble = std::iter::repeat(' ').take(preamble.len()).collect();
-      }
-    }
-    i += 1;
-  }
-  if start < i {
-    println!("{preamble}{}", String::from_utf8(bytes[start..i].to_vec()).unwrap());
-  }
-
-}}}
-
-fn handle_args(pattern_str: String, files: Vec<String>, opts: Opts) -> Result<usize, String> {{{
+fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<usize, SmatchError> {{{
   use Either::*;
 
   let mut pattern_sexpr = None;
-  for (i, parse_result) in parse(&pattern_str).enumerate() {
+  for (i, parse_result) in SExprParser::parse(&pattern_str).enumerate() {
     if i > 0 {
-      return Err(format!("Only one pattern allowed"));
+      return Err(SmatchError(format!("Only one pattern allowed")));
     }
     match parse_result {
       Left((p, _, _)) => { pattern_sexpr = Some(p); }
       Right(error) => {
-        return Err(format!("while parsing pattern:\n{error}"));
+        return Err(SmatchError(format!("while parsing pattern: {error}")));
       }
     }
   }
 
   if let None = pattern_sexpr {
-    return Err(format!("No pattern expression found"));
+    return Err(SmatchError(format!("No pattern expression found")));
   }
 
   let pattern_sexpr = pattern_sexpr.unwrap();
   let pattern = match Pattern::from(&pattern_sexpr) {
     Ok(pattern) => pattern,
     Err(error) => {
-      return Err(format!("while parsing pattern:\n{error}"));
+      return Err(SmatchError(format!("while parsing pattern: {error}")));
     }
   };
 
@@ -548,7 +558,7 @@ fn handle_args(pattern_str: String, files: Vec<String>, opts: Opts) -> Result<us
         file_queue.append(&mut files);
         continue;
       } else {
-        return Err(format!("{file} is a directory"));
+        return Err(SmatchError(format!("{file} is a directory")));
       }
     }
 
@@ -557,22 +567,22 @@ fn handle_args(pattern_str: String, files: Vec<String>, opts: Opts) -> Result<us
     let contents = match read_to_string(&file) {
       Ok(contents) => contents,
       Err(error) => {
-        return Err(format!("{file}: {error}"));
+        return Err(SmatchError(format!("{file}: {error}")));
       }
     };
 
-    for parse_result in parse(&contents) { match parse_result {
+    for parse_result in SExprParser::parse(&contents) { match parse_result {
       Right(error) => {
         if opts.ignore_syntax_errors {
           break;
         } else {
-          return Err(format!("{file}: {error}"));
+          return Err(SmatchError(format!("{file}: {error}")));
         }
       }
       Left((sexpr, start, end)) => {
         if opts.debug { println!("[debug] term = {sexpr:?}"); }
         if pattern.check(&sexpr) {
-          print_sexpr(&file, &contents, start, end, &opts);
+          SExprParser::print_sexpr(&file, &contents, start, end, &opts);
           num_matches += 1;
         }
       }
@@ -583,19 +593,21 @@ fn handle_args(pattern_str: String, files: Vec<String>, opts: Opts) -> Result<us
 }}}
 
 
-fn main() -> Result<(), String> {
-  let num_matches = match Cli::parse() {
+fn main() -> Result<(), SmatchError> {
+  let cli = Cli::parse();
+
+  let num_matches = match cli.clone() {
     Cli { pattern: None, pattern_file: None, .. }
-      => Err(format!("Missing pattern argument or pattern file")),
+      => Err(SmatchError(format!("Missing pattern argument or pattern file"))),
     Cli { pattern: Some(_), pattern_file: Some(_), .. }
-      => Err(format!("Expecting either a pattern or a pattern file, not both")),
-    Cli { pattern: Some(pattern), pattern_file: None, files, ignore_syntax_errors, line_number, debug, recursive } =>
-      handle_args(pattern, files, Opts { ignore_syntax_errors, line_number, debug, recursive }),
-    Cli { pattern: None, pattern_file: Some(pattern_file), files, ignore_syntax_errors, line_number, debug, recursive } => {
+      => Err(SmatchError(format!("Expecting either a pattern or a pattern file, not both"))),
+    Cli { pattern: Some(pattern), files, .. } =>
+      handle_args(pattern, &files, &cli),
+    Cli { pattern_file: Some(pattern_file), files, .. } => {
       let pattern = read_to_string(&pattern_file);
       match pattern {
-        Ok(pattern) => handle_args(pattern, files, Opts { ignore_syntax_errors, line_number, debug, recursive }),
-        Err(e) => Err(format!("pattern file: {e}")),
+        Ok(pattern) => handle_args(pattern, &files, &cli),
+        Err(e) => Err(SmatchError(format!("pattern file: {e}"))),
       }
     }
   }?;

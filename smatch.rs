@@ -496,12 +496,8 @@ struct Cli {
   line_number: bool,
 
   /// recursively read the contents of each directory
-  #[arg(short, default_value_t=false)]
+  #[arg(short, long, default_value_t=false)]
   recursive: bool,
-
-  /// verbose printing of the parsing and searching stages
-  #[arg(long, default_value_t=false)]
-  debug: bool,
 
   /// Invert the sense of matching, to select non-matching s-expr.
   #[arg(short='v', long, default_value_t=false)]
@@ -518,30 +514,18 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
 
   let mut pattern_sexpr = None;
   for (i, parse_result) in SExprParser::parse(&pattern_str).enumerate() {
-    if i > 0 {
-      return Err(SmatchError(format!("Only one pattern allowed")));
-    }
+    if i > 0 { return err!("Only one pattern allowed"); }
     match parse_result {
       Left((p, _, _)) => { pattern_sexpr = Some(p); }
-      Right(error) => {
-        return Err(SmatchError(format!("while parsing pattern: {error:?}")));
-      }
+      Right(error) => { return err!("while parsing pattern: {error:?}"); }
     }
   }
 
-  if let None = pattern_sexpr {
-    return Err(SmatchError(format!("No pattern expression found")));
-  }
+  if let None = pattern_sexpr { return err!("No pattern expression found"); }
 
   let pattern_sexpr = pattern_sexpr.unwrap();
-  let pattern = match Pattern::from(&pattern_sexpr) {
-    Ok(pattern) => pattern,
-    Err(error) => {
-      return Err(SmatchError(format!("while parsing pattern: {error:?}")));
-    }
-  };
-
-  if opts.debug { println!("[debug] pattern = {pattern:?}"); }
+  let pattern = Pattern::from(&pattern_sexpr)
+                        .map_err(|error| err2!("while parsing pattern: {error:?}"))?;
 
   let mut file_queue = files.clone();
 
@@ -553,42 +537,32 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
 
     if is_dir {
       if opts.recursive {
-        if opts.debug { println!("[debug] reading directory {file}"); }
-        let mut files = read_dir(&file).unwrap().map(|f| f.unwrap().path().into_os_string().into_string().unwrap()).collect();
+        let mut files = read_dir(&file).unwrap()
+          .map(|f| f.unwrap().path().into_os_string().into_string().unwrap()).collect();
         file_queue.append(&mut files);
         continue;
-      } else {
-        return Err(SmatchError(format!("{file} is a directory")));
-      }
+      } else { return err!("{file} is a directory"); }
     }
-
-    if opts.debug { println!("[debug] parsing {file}"); }
 
     let contents = match read_to_string(&file) {
       Ok(contents) => contents,
-      Err(error) => {
-        return Err(SmatchError(format!("{file}: {error}")));
-      }
+      Err(error) => { return err!("{file}: {error}"); }
     };
 
     let mut num_matches_file = 0;
     for parse_result in SExprParser::parse(&contents) { match parse_result {
-      Right(error) => {
-        if opts.ignore_syntax_errors {
-          break;
-        } else {
-          return Err(SmatchError(format!("{file}: {error:?}")));
-        }
-      }
       Left((sexpr, start, end)) => {
-        if opts.debug { println!("[debug] term = {sexpr:?}"); }
-        if pattern.check(&sexpr) == !opts.invert_match {
+        if pattern.check(&sexpr) != opts.invert_match {
           if !opts.count {
             SExprParser::print_sexpr(&file, &contents, start, end, &opts);
           }
           num_matches += 1;
           num_matches_file += 1;
         }
+      }
+      Right(error) => {
+        if opts.ignore_syntax_errors { break; }
+        else { return err!("{file}: {error:?}"); }
       }
     }}
 

@@ -9,7 +9,7 @@ assert_true() {
     echo "[PASS] $1 :: $2"
     PASS=$(expr $PASS + 1)
   else
-    echo "[FAIL] $1 :: $2"
+    printf "\e[1;31m[FAIL]\e[0m $1 :: $2"
     FAIL=$(expr $FAIL + 1)
   fi
 }
@@ -20,7 +20,7 @@ assert_false() {
     echo "[PASS] $1 !! $2"
     PASS=$(expr $PASS + 1)
   else
-    echo "[FAIL] $1 !! $2"
+    printf "\e[1;31m[FAIL]\e[0m $1 !! $2"
     FAIL=$(expr $FAIL + 1)
   fi
 }
@@ -60,6 +60,9 @@ assert_true  '(@re "^declare-.*$")'   'declare-fun'
 assert_false '(@re "^declare-.*$")'   '(declare-fun foo)'
 assert_true  '(@re ".*\(.*\).*")'     '|(declare-fun foo)|'
 
+assert_true  '()'                '()'
+assert_false '()'                '_'
+assert_false '()'                '(assert true)'
 assert_true  '(@atom @_)'        '(assert true)'
 assert_true  '(@atom @_)'        '(assert (forall ((x nat)) true))'
 assert_false '(@atom @_)'        '_'

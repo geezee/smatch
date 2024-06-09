@@ -332,16 +332,16 @@ impl Multiplicity {
     }
   }}}
 
-  // return [n, m) such that at least n (inclusive) must match and at most m (exclusive) must match
+  // return [n, m) such that at least n (inclusive) must match and at most m (inclusive) must match
   fn range(&self, infty: usize) -> (usize, usize) {{{
     use Multiplicity::*;
     match self {
       Zero => (0, 0),
-      Once => (1, 2),
+      Once => (1, 1),
       ZeroOrMore => (0, infty),
       OneOrMore => (1, infty),
-      ZeroOrOne => (0, 2),
-      LessThan(n) => (0, <u16 as Into<usize>>::into(*n) + 1),
+      ZeroOrOne => (0, 1),
+      LessThan(n) => (0, <u16 as Into<usize>>::into(*n)),
       MoreThan(n) => ((*n).into(), infty),
       Between(n1, n2) => ((*n1).into(), (*n2).into()),
     }
@@ -378,12 +378,12 @@ impl<'a> Pattern<'a> {
     }}
   }}}
 
-  // return [n, m) such that at least n (inclusive) must match and at most m (exclusive) must match
+  // return [n, m) such that at least n (inclusive) must match and at most m (inclusive) must match
   fn range(&self, infty: usize) -> (usize, usize) {{{
     use Pattern::*;
 
     match self {
-      Wildcard | Atom | Literal(_) | Re(_) | List(_) | Depth(_,_) => (1, 2),
+      Wildcard | Atom | Literal(_) | Re(_) | List(_) | Depth(_,_) => (1, 1),
       Choice(ps) => {
         let ranges = ps.iter().map(|p| p.range(infty));
         (ranges.clone().map(|bs| bs.0).min().unwrap(), ranges.map(|bs| bs.1).max().unwrap())
@@ -445,13 +445,17 @@ impl<'a> Pattern<'a> {
           return false
         },
 
+      (Repeat(mult, _), SExpr::List(empty))
+        if empty.len() == 0
+        => mult.allows(0),
+
       (Repeat(mult, pattern), SExpr::Atom(_))
         => mult.allows(1)
         && pattern.check(sexpr),
 
       (Repeat(mult, p), SExpr::List(terms))
+        if terms.len() > 0
         => mult.allows(terms.len())
-        || terms.len() == 0
         && p.check(&terms[0])
         && mult.decrease().map_or(false, |m|
              Repeat(m, p.clone()).check(&SExpr::List(terms[1..].to_vec()))),
@@ -473,6 +477,10 @@ impl<'a> Pattern<'a> {
       (List(_), SExpr::Atom(_)) |
       (Re(_), _)
         => false,
+
+      // cases that should be unreachable:
+      (Repeat(_,_), SExpr::List(_))
+        => unreachable!(),
     }
   }}}
 }

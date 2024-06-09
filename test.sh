@@ -160,4 +160,8 @@ fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr))))
 fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)' \
      '(or x (and (not y) z (or x z)) t (not r) (and))'
 
+pass '(@depth (@* (@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)))' \
+     '(assert (or x (and (not y) z (or x z)) t (not r)))'
+
+
 finish;

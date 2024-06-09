@@ -4,14 +4,14 @@ PASS=0
 FAIL=0
 
 pass() {
-  ./target/release/smatch "$1" <(echo "$2") > /dev/null
+  echo "$2" | ./target/release/smatch "$1" > /dev/null
   if [ $? -eq 0 ]; then echo "[PASS] $1 :: $2"; PASS=$(expr $PASS + 1)
   else printf "\e[1;31m[FAIL]\e[0m $1 :: $2\n"; FAIL=$(expr $FAIL + 1)
   fi
 }
 
 fail() {
-  ./target/release/smatch "$1" <(echo "$2") > /dev/null
+  echo "$2" | ./target/release/smatch "$1" > /dev/null
   if [ $? -eq 1 ]; then echo "[PASS] $1 !! $2"; PASS=$(expr $PASS + 1)
   else printf "\e[1;31m[FAIL]\e[0m $1 !! $2\n"; FAIL=$(expr $FAIL + 1)
   fi

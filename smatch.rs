@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use clap::{Parser};
 use regex::{Regex};
 
+const VERSION: &str = "0.1.0";
 
 
 macro_rules! one_of {
@@ -602,6 +603,9 @@ struct Cli {
   /// Only print the number of matches
   #[arg(short, long, default_value_t=false)]
   count: bool,
+
+  #[arg(long, default_value_t=false)]
+  version: bool
 }
 
 
@@ -691,6 +695,15 @@ fn main() -> Result<(), SmatchError> {
   let cli = Cli::parse();
 
   let num_matches = match cli.clone() {
+    Cli { version: true , .. }
+      => {
+        println!("smatch {VERSION}.
+Copyright (C) 2024
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.");
+        Ok(0)
+      },
     Cli { pattern: None, pattern_file: None, .. }
       => err!("Missing pattern argument or pattern file"),
     Cli { pattern: Some(_), pattern_file: Some(_), .. }

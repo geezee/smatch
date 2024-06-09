@@ -10,8 +10,8 @@ disjunctions of patterns,
 and flat and depth repetitions allowing to pattern match at particular depth levels in an
 s-expression and at particular flat positions.
 
-The flavor of s-expressions that Smatch parses is the SMTLIB flavor which is described in the
-manual.
+The flavor of s-expressions that Smatch parses is the SMTLIB v2.6 flavor which is described in the
+[manual (PDF)](https://smt-lib.org/papers/smt-lib-reference-v2.6-r2021-05-12.pdf).
 
 Smatch is pronounced like smash.
 

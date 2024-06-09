@@ -22,6 +22,17 @@ fundamentally there's a pattern matching algorithm and everything around it is b
 should be kept at a minimum.
 Thus smatch is offered in a single file `smatch.rs`.
 
+### Installing
+
+A statically linked binary for x86_64 is always provided in the
+[releases](https://github.com/geezee/smatch/releases).
+
+If you prefer to build and install it on your own you can run:
+
+```
+cargo install --git https://github.com/geezee/smatch
+```
+
 ### Building
 
 To build your own copy of smatch run the following command.

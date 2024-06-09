@@ -114,9 +114,13 @@ enum SExprParser {} impl SExprParser {
       },
       '"' => loop {
         if !inbounds!() { break err!("{}: Non-terminated string", *cursor-1) }
-        if current!() == '"' && peek!() != Some('"') { consume!(); break Ok(Str(token_start+1, *cursor-1)) }
+        if current!() == '"' && peek!() == Some('"') {
+          consume!();
+        } else if current!() == '"' {
+          consume!(); break Ok(Str(token_start+1, *cursor-1))
+        }
         consume!();
-      },
+    },
       '|' => loop {
         if !inbounds!() { break err!("{}: Non-terminated quoted symbol", *cursor-1) }
         if current!() == '\\' { break Err(SmatchError(format!("{cursor}: \\ not allowed in quoted symbols"))) }
@@ -354,7 +358,8 @@ impl<'a> Pattern<'a> {
     Atom(Symbol("@atom")) => Ok(Pattern::Atom),
     Atom(lit) => Ok(Pattern::Literal(lit)),
     List(lst) => match &lst[..] {
-      [Atom(Symbol("@re")), Atom(Str(re))] => Ok(Pattern::Re(Regex::new(re).unwrap())),
+      [Atom(Symbol("@re")), Atom(Str(re))] =>
+        Ok(Pattern::Re(Regex::new(&str::replace(re, "\"\"", "\"")).unwrap())),
       [Atom(Symbol("@*"|"@+"|"@?"|"@less"|"@more"|"@between")), ..] => {
         let (repeat, pattern) = Multiplicity::from(sexpr)?;
         Ok(Pattern::Repeat(repeat, Rc::new(pattern)))

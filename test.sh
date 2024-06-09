@@ -49,6 +49,8 @@ fail 'hello'   '(declare-fun hello (T T) (Vec T))'
 pass '(@re "^declare-.*$")'   'declare-fun'
 fail '(@re "^declare-.*$")'   '(declare-fun foo)'
 pass '(@re ".*\(.*\).*")'     '|(declare-fun foo)|'
+pass '(@re """")'             '|a "quoted" identifier|'
+pass '(@re "a ""quote")'      '|a "quoted" identifier|'
 
 pass '()'                '()'
 fail '()'                '_'
@@ -133,6 +135,6 @@ pass '(@depth (@more 2 (= @atom @_)))'  '(assert (and (= v (f 10)) true))'
 fail '(@depth (@more 2 (= @atom @_)))'  '(assert (= v (f 10)))'
 
 fail '(@or (@depth (@* true)) (@depth (@more 4 (= @_ @_))) (assert @atom))' \
-             '(assert (or (= 3 4) false))'
+     '(assert (or (= 3 4) false))'
 
 finish;

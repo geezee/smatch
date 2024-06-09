@@ -163,3 +163,57 @@ printf "(assert (= (f hello) world))" | smatch '(@depth (@* hello))'
 printf "(assert (= (f hello) world))" | smatch '(@depth (@between 2 4 hello))'
 ```
 
+### Let bindings
+
+Patterns can be given names and reused later.
+Pattern names are of the shape `@<name>` with the obvious exception that `atom` and `_` being illegal names.
+
+A simple example is the following pattern:
+
+```
+(@let (@t true) (@f false)
+  (@or @t @f))
+```
+
+which is equivalent to `(@or true false)`.
+
+Patterns can be nested and the usual lexical scoping rules apply, so:
+
+```
+(@let (@t true)
+  (@or @t (@let (@t false)
+    @t)))
+```
+
+is still equivalent to `(@or true false)`
+
+Patterns can also be recursive which allows for cool patterns to be defined.
+Just beware infinite recursion and the order of your variables!
+Patterns are evaluated left to right and are greedy (they try to match as much as possible first before backtracking).
+
+For example, the following pattern:
+
+```
+(@let (@bexpr (@or @atom (not @bexpr) (or (@+ @bexpr)) (and (@+ @bexpr))))
+      @bexpr)
+```
+
+matches the following
+
+```
+(or x (and (not y) z (or x z)) t (not r))
+```
+
+but does not match the following expressions:
+
+```
+(or x (and (not y) z (or x z)) t (not r) (=> x y))
+```
+
+```
+(or x (and (not y) z (or x z)) t (not r) (and))
+```
+
+```
+(assert (or x (and (not y) z (or x z)) t (not r)))
+```

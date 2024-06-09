@@ -137,4 +137,27 @@ fail '(@depth (@more 2 (= @atom @_)))'  '(assert (= v (f 10)))'
 fail '(@or (@depth (@* true)) (@depth (@more 4 (= @_ @_))) (assert @atom))' \
      '(assert (or (= 3 4) false))'
 
+pass '(@let (@a hello) @a)'                             'hello'
+pass '(@let (@a @b) (@b hello) @a)'                     'hello'
+fail '(@let (@a @b) (@b world) @a)'                     'hello'
+pass '(@let (@a @b) (@b world) (@let (@a hello) @a))'   'hello'
+fail '(@let (@a @b) (@b world) (@let (@a test) @a))'    'hello'
+
+pass '(@let (@t a) (@or (@let (@t b) @t) @t))'  'a'
+pass '(@let (@t a) (@or (@let (@t b) @t) @t))'  'b'
+pass '(@let (@t a) (@or @t (@let (@t b) @t)))'  'a'
+pass '(@let (@t a) (@or @t (@let (@t b) @t)))'  'b'
+
+pass '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)' \
+     '(or x (and (not y) z (or x z)) t (not r))'
+
+fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)' \
+     '(assert (or x (and (not y) z (or x z)) t (not r)))'
+
+fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)' \
+     '(or x (and (not y) z (or x z)) t (not r) (=> x y))'
+
+fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)' \
+     '(or x (and (not y) z (or x z)) t (not r) (and))'
+
 finish;

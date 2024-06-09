@@ -3,6 +3,8 @@ use std::rc::{Rc};
 use std::fs::{read_to_string, metadata, read_dir};
 use std::io::{stdin};
 
+use std::collections::HashMap;
+
 use clap::{Parser};
 use regex::{Regex};
 
@@ -237,6 +239,34 @@ enum SExprParser {} impl SExprParser {
 
 
 #[derive(Debug, Clone)]
+struct Env<'a> {
+  bindings: HashMap<&'a str, Rc<Pattern<'a>>>,
+  parent: Option<&'a Env<'a>>
+}
+
+impl<'a> Default for Env<'a> {
+  fn default() -> Self {
+    Env { bindings: HashMap::new(), parent: None }
+  }
+}
+
+impl<'a> Env<'a> {
+  fn extend(&mut self, var: &'a str, binding: &'_ Rc<Pattern<'a>>) {
+    self.bindings.insert(var, binding.clone());
+  }
+
+  fn get(&self, var: &'_ str) -> Option<Rc<Pattern<'a>>> {
+    self.bindings.get(var).cloned().or_else(|| self.parent.and_then(|p| p.get(var)))
+  }
+
+  fn fork(&self) -> Env<'_> {
+    Env { bindings: HashMap::new(), parent: Some(self) }
+  }
+}
+
+
+
+#[derive(Debug, Clone)]
 enum Multiplicity {
   Zero,
   Once,
@@ -253,12 +283,14 @@ enum Pattern<'a> {
   Wildcard,
   Atom,
   Literal(&'a Literal<'a>),
+  Var(&'a str),
   Re(Regex),
   Choice(Vec<Pattern<'a>>),
   And(Vec<Pattern<'a>>),
   List(Vec<Pattern<'a>>),
   Repeat(Multiplicity, Rc<Pattern<'a>>),
   Depth(Multiplicity, Rc<Pattern<'a>>),
+  Let(HashMap<&'a str, Rc<Pattern<'a>>>, Rc<Pattern<'a>>)
 }
 
 
@@ -356,6 +388,7 @@ impl<'a> Pattern<'a> {
     match sexpr {
     Atom(Symbol("@_")) => Ok(Pattern::Wildcard),
     Atom(Symbol("@atom")) => Ok(Pattern::Atom),
+    Atom(Symbol(name)) if name.as_bytes()[0] == b'@' => Ok(Pattern::Var(name)),
     Atom(lit) => Ok(Pattern::Literal(lit)),
     List(lst) => match &lst[..] {
       [Atom(Symbol("@re")), Atom(Str(re))] =>
@@ -372,7 +405,21 @@ impl<'a> Pattern<'a> {
         Ok(Pattern::Choice(vec_map!(p in patterns => Pattern::from(p)?))),
       [Atom(Symbol("@and")), patterns @ ..] if patterns.len() > 0 =>
         Ok(Pattern::And(vec_map!(p in patterns => Pattern::from(p)?))),
-      [Atom(Symbol(cmd @ ("@re" | "@depth" | "@or" | "@and"))), ..]
+      [Atom(Symbol("@let")), parts @ ..] if parts.len() > 0 => {
+        let mut bindings = HashMap::new();
+        for part in &parts[..parts.len()-1] { match part {
+          Atom(_) => err!("the variable and its bound pattern are parenthesised")?,
+          List(lst) => match &lst[..] {
+            [Atom(Symbol(var)), p] => {
+              bindings.insert(&var[..], Rc::new(Pattern::from(p)?));
+            },
+            _ => err!("Wrong binding argument to @let")?
+          }
+        }}
+        let subpattern = Pattern::from(&parts[parts.len()-1])?;
+        Ok(Pattern::Let(bindings, Rc::new(subpattern)))
+      },
+      [Atom(Symbol(cmd @ ("@re" | "@depth" | "@or" | "@and" | "@let"))), ..]
         => err!("Wrong arguments to {cmd}"),
       [patterns @ ..] => Ok(Pattern::List(vec_map!(x in patterns => Pattern::from(x)?))),
     }}
@@ -396,14 +443,17 @@ impl<'a> Pattern<'a> {
         let (min1, max1) = mult.range(infty);
         let (min2, max2) = p.range(infty);
         (min1 * min2, max1 * max2)
-      }
+      },
+      // let's not analyze environments here
+      Let(_, _) => (0, infty),
+      Var(_) => (0, infty),
     }
   }}}
 }
 
 
 impl<'a> Pattern<'a> {
-  fn check<'b>(&self, sexpr: &'b SExpr<'a>) -> bool {{{
+  fn check<'b, 'c>(&self, sexpr: &'b SExpr<'a>, env: &'c Env<'a>) -> bool {{{
     use Pattern::*;
 
     match (self, sexpr) {
@@ -419,11 +469,14 @@ impl<'a> Pattern<'a> {
       (Pattern::Atom, SExpr::Atom(_))
         => true,
 
+      (Var(var), term)
+        => env.get(var).map(|p| p.check(term, env)).unwrap_or(false),
+
       (Choice(patterns), sexpr)
-        => patterns.iter().any(|p| p.check(sexpr)),
+        => patterns.iter().any(|p| p.check(sexpr, env)),
 
       (And(patterns), sexpr)
-        => patterns.iter().all(|p| p.check(sexpr)),
+        => patterns.iter().all(|p| p.check(sexpr, env)),
 
       (List(patterns), SExpr::List(terms))
         if patterns.len() == 0
@@ -435,9 +488,12 @@ impl<'a> Pattern<'a> {
           let ps = List(patterns[1..].to_vec());
           let (min, max) = p.range(terms.len());
           for k in (min..=max.min(terms.len())).rev() { // intuition: being greedy is better
-            if (k == 0 && p.check(&SExpr::List(vec![])) && ps.check(sexpr)) ||
-               (k == 1 && p.check(&terms[0]) && ps.check(&SExpr::List(terms[1..].to_vec()))) ||
-               (k >= 2 && p.check(&SExpr::List(terms[0..k].to_vec())) && ps.check(&SExpr::List(terms[k..].to_vec())))
+            if (k == 0 && p.check(&SExpr::List(vec![]), env)
+                       && ps.check(sexpr, env)) ||
+               (k == 1 && p.check(&terms[0], env)
+                       && ps.check(&SExpr::List(terms[1..].to_vec()) , env)) ||
+               (k >= 2 && p.check(&SExpr::List(terms[0..k].to_vec()), env)
+                       && ps.check(&SExpr::List(terms[k..].to_vec()), env))
             {
               return true
             }
@@ -451,25 +507,32 @@ impl<'a> Pattern<'a> {
 
       (Repeat(mult, pattern), SExpr::Atom(_))
         => mult.allows(1)
-        && pattern.check(sexpr),
+        && pattern.check(sexpr, env),
 
       (Repeat(mult, p), SExpr::List(terms))
         if terms.len() > 0
         => mult.allows(terms.len())
-        && p.check(&terms[0])
+        && p.check(&terms[0], env)
         && mult.decrease().map_or(false, |m|
-             Repeat(m, p.clone()).check(&SExpr::List(terms[1..].to_vec()))),
+             Repeat(m, p.clone()).check(&SExpr::List(terms[1..].to_vec()), env)),
 
       (Depth(mult, p), SExpr::Atom(_))
         => mult.allows(0)
-        && p.check(sexpr),
+        && p.check(sexpr, env),
 
       (Depth(mult, p), SExpr::List(terms))
-        => (mult.allows(0) && p.check(sexpr))
+        => (mult.allows(0) && p.check(sexpr, env))
         || mult.decrease().map_or(false, |m| {
              let p = Depth(m, p.clone());
-             terms.iter().any(|t| p.check(t))
+             terms.iter().any(|t| p.check(t, env))
            }),
+
+      (Let(bindings, pattern), term)
+        => {
+          test mut env = env.fork();
+          for (v, p) in bindings { env.extend(v, p); }
+          pattern.check(term, &env)
+        }
 
       // illegal cases:
       (Atom, SExpr::List(_)) |
@@ -529,7 +592,7 @@ fn handle_contents(pattern: &Pattern<'_>, file: &str, contents: &str, opts: &Cli
   let mut num_matches_file = 0;
   for parse_result in SExprParser::parse(contents) { match parse_result {
     Left((sexpr, start, end)) => {
-      if pattern.check(&sexpr) != opts.invert_match {
+      if pattern.check(&sexpr, &Env::default()) != opts.invert_match {
         if !opts.count {
           SExprParser::print_sexpr(&file, contents, start, end, &opts);
         }

@@ -529,7 +529,7 @@ impl<'a> Pattern<'a> {
 
       (Let(bindings, pattern), term)
         => {
-          test mut env = env.fork();
+          let mut env = env.fork();
           for (v, p) in bindings { env.extend(v, p); }
           pattern.check(term, &env)
         }

@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use std::rc::{Rc};
 use std::fs::{read_to_string, metadata, read_dir};
+use std::io::{stdin};
 
 use clap::{Parser};
 use regex::{Regex};
@@ -509,6 +510,32 @@ struct Cli {
 }
 
 
+fn handle_contents(pattern: &Pattern<'_>, file: &str, contents: &str, opts: &Cli) -> Result<usize, SmatchError> {{{
+  use Either::*;
+
+  let mut num_matches_file = 0;
+  for parse_result in SExprParser::parse(contents) { match parse_result {
+    Left((sexpr, start, end)) => {
+      if pattern.check(&sexpr) != opts.invert_match {
+        if !opts.count {
+          SExprParser::print_sexpr(&file, contents, start, end, &opts);
+        }
+        num_matches_file += 1;
+      }
+    }
+    Right(error) => {
+      if opts.ignore_syntax_errors { break; }
+      else { return err!("{file}: {error:?}"); }
+    }
+  }}
+
+  if opts.count {
+    println!("{file}:{num_matches_file}");
+  }
+
+  Ok(num_matches_file)
+}}}
+
 fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<usize, SmatchError> {{{
   use Either::*;
 
@@ -531,6 +558,17 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
 
   let mut num_matches = 0;
 
+  if files.len() == 0 {
+    return handle_contents(&pattern, "/dev/fd/0", &{
+      let mut result = String::new();
+      for line in stdin().lines() {
+        result.push_str(&line.expect("Cannot read from stdin"));
+        result.push('\n');
+      }
+      result
+    }, opts);
+  }
+
   while file_queue.len() > 0 {
     let file = file_queue.swap_remove(0);
     let is_dir = metadata(&file).map_or(false, |f| f.file_type().is_dir());
@@ -544,31 +582,10 @@ fn handle_args(pattern_str: String, files: &Vec<String>, opts: &Cli) -> Result<u
       } else { return err!("{file} is a directory"); }
     }
 
-    let contents = match read_to_string(&file) {
+    num_matches += handle_contents(&pattern, &file, &match read_to_string(&file) {
       Ok(contents) => contents,
       Err(error) => { return err!("{file}: {error}"); }
-    };
-
-    let mut num_matches_file = 0;
-    for parse_result in SExprParser::parse(&contents) { match parse_result {
-      Left((sexpr, start, end)) => {
-        if pattern.check(&sexpr) != opts.invert_match {
-          if !opts.count {
-            SExprParser::print_sexpr(&file, &contents, start, end, &opts);
-          }
-          num_matches += 1;
-          num_matches_file += 1;
-        }
-      }
-      Right(error) => {
-        if opts.ignore_syntax_errors { break; }
-        else { return err!("{file}: {error:?}"); }
-      }
-    }}
-
-    if opts.count {
-      println!("{file}:{num_matches_file}");
-    }
+    }, opts)?;
   }
 
   Ok(num_matches)

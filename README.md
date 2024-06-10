@@ -15,14 +15,49 @@ The flavor of s-expressions that Smatch parses is the SMTLIB v2.6 flavor which i
 
 Smatch is pronounced like smash.
 
-## A Note on Source Code
+## Example Usage
 
-The tool is meant to do one thing and one thing alone:
-fundamentally there's a pattern matching algorithm and everything around it is boilerplate which
-should be kept at a minimum.
-Thus smatch is offered in a single file `smatch.rs`.
+Problem: Find the s-expressions that contain calls to the `eq?` function whose arguments contains
+`true` or `false`.
 
-### Installing
+The pattern to match these expressions is `(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))`.
+The syntax of the patterns is described later.
+
+If the files to search in are `a.lisp` and `b.lisp` the following command lists the top-level
+s-expressions that match:
+
+```
+smatch '(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))' a.lisp b.lisp
+```
+
+If the files live in some folder then the recursive flag `-r` can be used
+
+```
+smatch '(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))' -r files/
+```
+
+If the pattern is too long and exists in a file (see `smatch-syntax.lisp`) then it can be passed
+with the `-f` flag
+
+```
+smatch -f pattern.lisp -r files/
+```
+
+The `-c` flag counts the number of matches in each matched file, and `-n` shows the position of
+match in each file:
+
+```
+> smatch '(@depth (@* hello))' -r files
+files/test.lisp:4:(define-fun hello ; this is the hello function
+                              ((a bool) (b string))
+                              (todo))
+files/test.lisp:14:(print (hello #t "[debug]"))
+```
+
+If you're matching against a file which `smatch` cannot parse then the `-i` flag will report all
+matches until the error and continue to the next file without panicing.
+
+## Installing
 
 A statically linked binary for x86_64 is always provided in the
 [releases](https://github.com/geezee/smatch/releases).
@@ -33,7 +68,7 @@ If you prefer to build and install it on your own you can run:
 cargo install --git https://github.com/geezee/smatch
 ```
 
-### Building
+## Building
 
 To build your own copy of smatch run the following command.
 
@@ -45,17 +80,6 @@ It will first install and build smatch's two dependencies: regex and clap.
 This is a one-time operation unless you have chosen to update the locked version of either.
 
 The resulting binary is in `target/release/smatch`.
-
-### A Note on Tests
-
-The tests are also provided in a single bash script that also serves as a list of examples to better
-understand what patterns are designed to match.
-
-### A Note on Cargo Test
-
-Ideally the tests would be run with `cargo test`.
-Sadly this requires giving names to the 120+ tests and examples in `test.sh` which is a silly thing
-to spend time on.
 
 ## Syntax of Patterns
 
@@ -238,3 +262,24 @@ but does not match the following expressions:
 ```
 (assert (or x (and (not y) z (or x z)) t (not r)))
 ```
+
+## Development
+
+### A Note on Source Code
+
+The tool is meant to do one thing and one thing alone:
+fundamentally there's a pattern matching algorithm and everything around it is boilerplate which
+should be kept at a minimum.
+Thus smatch is offered in a single file `smatch.rs`.
+
+### A Note on Tests
+
+The tests are also provided in a single bash script that also serves as a list of examples to better
+understand what patterns are designed to match.
+
+### A Note on Cargo Test
+
+Ideally the tests would be run with `cargo test`.
+Sadly this requires giving names to the 120+ tests and examples in `test.sh` which is a silly thing
+to spend time on.
+

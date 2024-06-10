@@ -85,10 +85,26 @@ pass '(@* @atom)'        '(hello world !)'
 fail '(@* @atom)'        '(hello world ())'
 fail '(@* @atom)'        '(hello world (!))'
 
+pass '((@* (@_ @_)))'    '((a b))'
+pass '((@* (@_ @_)))'    '((a b) (c d))'
+pass '((@* (@_ @_)))'    '(((a b) e) ((c) d))'
+
+pass '(@atom (@* (@_ @_)) @_)' '(forall (x T) (y Bool) (z Nat) (distinct x y))'
+pass '(@atom (@* (@_ @_)) @_)' '(forall (x T) (y Bool) (distinct x y))'
+pass '(@atom (@* (@_ @_)) @_)' '(forall (x T) (distinct x 0))'
+pass '(@atom (@* (@_ @_)) @_)' '(forall (x (-> T1 T2)) (distinct x 0))'
+pass '(@atom (@* (@_ @_)) @_)' '(forall true)'
+fail '(@atom (@* (@_ @_)) @_)' '(forall true true)'
+fail '(@atom (@* (@_ @_)) @_)' '(forall (a b c) true)'
+
 pass '(@+ @atom)'        '_'
 fail '(@+ @atom)'        '()'
 pass '(@+ @atom)'        '(hello world !)'
 fail '(@+ @atom)'        '(hello world ())'
+
+pass '(@atom (@+ (@_ @_)) @_)' '(forall (x T) (y Bool) (distinct x y))'
+pass '(@atom (@+ (@_ @_)) @_)' '(forall (x T) (distinct x 0))'
+fail '(@atom (@+ (@_ @_)) @_)' '(forall true)'
 
 pass '(@? @atom)'        '()'
 pass '(@? @atom)'        'hello'

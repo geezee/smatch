@@ -507,18 +507,16 @@ impl<'a> Pattern<'a> {
           let p = &patterns[0];
           let ps = List(patterns[1..].to_vec());
           let (min, max) = p.range(terms.len());
-          for k in (min..=max.min(terms.len())).rev() { // intuition: being greedy is better
-            if (k == 0 && p.check(&SExpr::List(vec![]), env)
-                       && ps.check(sexpr, env)) ||
-               (k == 1 && p.check(&terms[0], env)
-                       && ps.check(&SExpr::List(terms[1..].to_vec()) , env)) ||
-               (k >= 2 && p.check(&SExpr::List(terms[0..k].to_vec()), env)
-                       && ps.check(&SExpr::List(terms[k..].to_vec()), env))
-            {
-              return true
-            }
-          }
-          return false
+          (min..=max.min(terms.len())).rev().any(|k| { // intuition: being greedy is better
+            (k == 0 && p.check(&SExpr::List(vec![]), env)
+                    && ps.check(sexpr, env)) ||
+            (k == 1 && p.check(&terms[0], env)
+                    && ps.check(&SExpr::List(terms[1..].to_vec()) , env)) ||
+            (k == 1 && p.check(&SExpr::List(terms[0..1].to_vec()), env)
+                    && ps.check(&SExpr::List(terms[1..].to_vec()) , env)) ||
+            (k >= 2 && p.check(&SExpr::List(terms[0..k].to_vec()), env)
+                    && ps.check(&SExpr::List(terms[k..].to_vec()), env))
+          })
         },
 
       (Repeat(mult, _), SExpr::List(empty))

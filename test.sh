@@ -179,5 +179,6 @@ fail '(@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr))))
 pass '(@depth (@* (@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@+ @bexpr)))) @bexpr)))' \
      '(assert (or x (and (not y) z (or x z)) t (not r)))'
 
+fail '(@let (@s @s) @s)' '_'
 
 finish;

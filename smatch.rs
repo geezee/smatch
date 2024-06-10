@@ -706,11 +706,13 @@ There is NO WARRANTY, to the extent permitted by law.");
       },
     Cli { pattern: None, pattern_file: None, .. }
       => err!("Missing pattern argument or pattern file"),
-    Cli { pattern: Some(_), pattern_file: Some(_), .. }
-      => err!("Expecting either a pattern or a pattern file, not both"),
-    Cli { pattern: Some(pattern), files, .. } =>
+    Cli { pattern_file: None, pattern: Some(pattern), files, .. } =>
       handle_args(pattern, &files, &cli),
-    Cli { pattern_file: Some(pattern_file), files, .. } => {
+    Cli { pattern_file: Some(pattern_file), files, pattern, .. } => {
+      let files: Vec<String> = match pattern {
+        Some(pattern) => [ pattern.clone() ].into_iter().chain(files).collect(),
+        None => files,
+      };
       let pattern = read_to_string(&pattern_file);
       match pattern {
         Ok(pattern) => handle_args(pattern, &files, &cli),

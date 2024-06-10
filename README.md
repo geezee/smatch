@@ -1,4 +1,4 @@
-# Smatch
+# smatch
 
 A grep-like command line utility to search for s-expressions matching some given patterns.
 Patterns are wildcards that match any s-expression,
@@ -54,12 +54,22 @@ understand what patterns are designed to match.
 ### A Note on Cargo Test
 
 Ideally the tests would be run with `cargo test`.
-Sadly this requires giving names to the 90+ tests and examples in `test.sh` which is a silly thing
+Sadly this requires giving names to the 120+ tests and examples in `test.sh` which is a silly thing
 to spend time on.
 
 ## Syntax of Patterns
 
 For more examples look in `test.sh`.
+
+**The smatch pattern syntax can be described in itself!**
+
+Have a look at `smatch-syntax.lisp` to see how smatch patterns look within themselves.
+This file is useful in tests.
+The last two tests that `./test.sh` runs are:
+
+1. It checks that `smatch-syntax.lisp` pattern matches with `smatch-syntax.lisp`
+2. It gathers all the patterns in `./test.sh` and checks that `smatch-syntax.lisp` matches all of them
+
 
 ### Wildcard
 

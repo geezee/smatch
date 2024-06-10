@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cargo build --release
+
 PASS=0
 FAIL=0
 
@@ -180,5 +182,35 @@ pass '(@depth (@* (@let (@bexpr (@or @atom (not @bexpr) (and (@+ @bexpr)) (or (@
      '(assert (or x (and (not y) z (or x z)) t (not r)))'
 
 fail '(@let (@s @s) @s)' '_'
+fail '(@let (@a @b) (@b @c) (@c @a) @a)' '_'
 
-finish;
+
+# this test checks that `smatch-syntax.lisp` matches `smatch-syntax.lisp`
+./target/release/smatch -f smatch-syntax.lisp smatch-syntax.lisp > /dev/null
+if [ $? -eq 0 ]; then echo "[PASS] -f smatch-syntax.lisp smatch-syntax.lisp"; PASS=$(expr $PASS + 1)
+else printf "\e[1;31m[FAIL]\e[0m -f smatch-syntax.lisp smatch-syntax.lisp\n"; FAIL=$(expr $FAIL + 1)
+fi
+
+
+# This test gathers all the patterns used in the tests and checks that they match `smatch-syntax.lisp`
+all_test_patterns=$(grep -E "^(pass|fail)\s+" "$0" | sed "s/^[^']*'//g" | sed "s/'.*$//g" | sort | uniq)
+count_test_patterns=$(echo "$all_test_patterns" | wc -l)
+echo "$all_test_patterns" | ./target/release/smatch -f smatch-syntax.lisp > /dev/null
+if [ $? -eq 0 ]; then
+  echo "[PASS] -f smatch-syntax.lisp all_test_patterns"
+  PASS=$(expr $PASS + 1)
+  count_passed=$(echo "$all_test_patterns" | ./target/release/smatch -f smatch-syntax.lisp -c | sed "s/^.*://g")
+  if [ $count_passed -eq $count_test_patterns ]; then
+    echo "[PASS] -f smatch-syntax.lisp matches all $count_passed patterns"
+    PASS=$(expr $PASS + 1)
+  else
+    printf "\e[1;31m[FAIL]\e[0m -f smatch-syntax.lisp only $count_passed / $count_test_patterns patterns passed\n";
+    FAIL=$(expr $FAIL + 1)
+  fi
+else
+  printf "\e[1;31m[FAIL]\e[0m -f smatch-syntax.lisp all_test_patterns\n"
+  FAIL=$(expr $FAIL + 1)
+fi
+
+
+finish

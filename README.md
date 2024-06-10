@@ -20,20 +20,20 @@ Smatch is pronounced like smash.
 Problem: Find the s-expressions that contain calls to the `eq?` function whose arguments contains
 `true` or `false`.
 
-The pattern to match these expressions is `(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))`.
+The pattern to match these expressions is `(@depth (@* (eq? (@* @_) (@or true false) (@* @_))))`.
 The syntax of the patterns is described later.
 
 If the files to search in are `a.lisp` and `b.lisp` the following command lists the top-level
 s-expressions that match:
 
 ```
-smatch '(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))' a.lisp b.lisp
+smatch '(@depth (@* (eq? (@* @_) (@or true false) (@* @_))))' a.lisp b.lisp
 ```
 
 If the files live in some folder then the recursive flag `-r` can be used
 
 ```
-smatch '(@deth (@* (eq? (@* @_) (@or true false) (@* @_))))' -r files/
+smatch '(@depth (@* (eq? (@* @_) (@or true false) (@* @_))))' -r files/
 ```
 
 If the pattern is too long and exists in a file (see `smatch-syntax.lisp`) then it can be passed
